@@ -1,0 +1,21 @@
+# Directories
+.vs
+Debug
+Release
+bin
+ipch
+
+# Files
+Thumbs.db
+
+# Extensions
+*.log
+*.opensdf
+*.pyc
+*.sdf
+*.suo
+*.swo
+*.swp
+*.tar.gz
+*~
+
