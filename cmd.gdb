@@ -1,4 +1,4 @@
-file ./my_lda.exe
+file bin/lda.exe
 
 
 define pCorpus
@@ -62,6 +62,7 @@ define pGamma
 	pMatrix var_gamma NUM_DOCS NUM_TOPICS
 end
 
+
 define pPhi
 	set $d = 0
 	while $d < NUM_DOCS
@@ -82,7 +83,8 @@ define pPhi
 end
 
 
-break my-lda.cpp:230
+break LDA.cpp:97
+break LDA.cpp:231
+run Datasets/small-corpus.txt 2
 layout src
-run
 

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <random>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -23,10 +24,11 @@ constexpr double EPSILON = 5.0;
 /// Parameters
 constexpr double ALPHA = 0.5;
 
-int NUM_TOPICS = 2;					/// K
+int NUM_TOPICS = 0;					/// K
 int NUM_VOCABS = 0;					/// V
-int NUM_WORDS_IN_DOC = 0;			/// N
+int MAX_WORD_IN_DOC = 0;			/// N
 int NUM_DOCS = 0;					/// D
+int MIN_TERM = 0;
 
 std::vector<double> var_gamma;		/// [D][K]
 std::vector<double> phi;			/// [D][N][K]
@@ -54,57 +56,52 @@ bool ReadCorpus(const char* corpus_path, Corpus& corpus)
 		return false;
 
 	corpus.clear();
+	int min_term = std::numeric_limits<int>::max();
+	int max_term = std::numeric_limits<int>::min();
+	int max_words_in_doc = std::numeric_limits<int>::min();
 	std::string line;
 	while (std::getline(in_file, line)) {
-		// Read number of words in current document.
-		size_t spos = line.find(' ', 0);
-		int num_words = atoi(line.substr(0, spos).c_str());
-		++spos;
+		std::istringstream iss(line);
+		int num_terms;
+		iss >> num_terms;													// Read number of words in current document.
 
 		// Read words.
 		Doc doc;
-		for (int n = 0; n < num_words; ++n) {
+		int total_count = 0;
+		for (int n = 0; n < num_terms; ++n) {
+			char colon;
 			Word word;
-			// Read word index.
-			size_t epos = line.find(':', spos);
-			word.term = atoi(line.substr(spos, epos - spos).c_str());
-			spos = epos + 1;
+			iss >> word.term >> colon >> word.count;						// Read term index and count.
 
-			// Read word count.
-			epos = line.find(' ', spos);
-			if (epos == std::string::npos)
-				epos = line.length();
-			word.count = atoi(line.substr(spos, epos - spos).c_str());
-			spos = epos + 1;
-
+			min_term = std::min(min_term, word.term);
+			max_term = std::max(max_term, word.term);
+			total_count += word.count;
 			doc.push_back(word);
 		}
+		max_words_in_doc = std::max(max_words_in_doc, total_count);
 		corpus.push_back(doc);
 	}
+
+	// Update some parameters.
+	NUM_DOCS = static_cast<int>(corpus.size());
+	NUM_VOCABS = max_term - min_term + 1;
+	MAX_WORD_IN_DOC = max_words_in_doc;
+	MIN_TERM = min_term;
 	return true;
 }
 
-int GetNumWords(const Doc& doc)
+void DumpBeta(const std::vector<double>& b)
 {
-	int sum = 0;
-	for (const auto& d : doc)
-		sum += d.count;
-	return sum;
-}
-
-void PrintBeta(const std::vector<double>& b)
-{
-	auto p = std::cout.precision();
-	std::cout.precision(2);
-	std::cout << std::fixed;
+	std::ofstream out_file("beta.txt");
+	out_file.precision(2);
+	out_file << std::fixed;
 	for (int k = 0; k < NUM_TOPICS; ++k) {
-		std::cout << k << " ->   " << exp(b[BETA_IDX(k, 0)]);
+		out_file << k << " ->   " << exp(b[BETA_IDX(k, 0)]);
 		for (int n = 1; n < NUM_VOCABS; ++n)
-			std::cout << ' ' << exp(b[BETA_IDX(k, n)]);
-		std::cout << std::endl;
+			out_file << ' ' << exp(b[BETA_IDX(k, n)]);
+		out_file << std::endl;
 	}
-	std::cout << std::endl;
-	std::cout.precision(p);
+	out_file << std::endl;
 }
 
 int GetDocTopic(int d, const std::vector<double>& g)
@@ -119,16 +116,17 @@ int GetDocTopic(int d, const std::vector<double>& g)
 	return mk;
 }
 
-void PrintGamma(const std::vector<double>& g)
+void DumpGamma(const std::vector<double>& g)
 {
+	std::ofstream out_file("var_gamma.txt");
 	for (int d = 0; d < NUM_DOCS; ++d) {
 		int doc_topic = GetDocTopic(d, g);
-		std::cout << std::setw(3) << d << " ->  " << doc_topic << "  " << g[GAMMA_IDX(d, 0)];
+		out_file << std::setw(3) << d << " ->  " << doc_topic << "  " << g[GAMMA_IDX(d, 0)];
 		for (int k = 1; k < NUM_TOPICS; ++k)
-			std::cout << "   " << g[GAMMA_IDX(d, k)];
-		std::cout << std::endl;
+			out_file << "   " << g[GAMMA_IDX(d, k)];
+		out_file << std::endl;
 	}
-	std::cout << std::endl;
+	out_file << std::endl;
 }
 
 double digamma(double x)
@@ -141,7 +139,7 @@ double digamma(double x)
 	return p;
 }
 
-double CalcDocLikelihood(int d, const Corpus& corpus)
+double CalcDocLogLikelihood(int d, const Corpus& corpus)
 {
 	double gamma_sum = 0;
 	std::vector<double> digamma_gamma(NUM_TOPICS, 0.0);
@@ -151,18 +149,18 @@ double CalcDocLikelihood(int d, const Corpus& corpus)
 		gamma_sum += var_gamma[GIDX];
 	}
 	double digamma_gamma_sum = digamma(gamma_sum);
-	double likelihood = - NUM_TOPICS * lgamma(ALPHA) - lgamma(gamma_sum);
+	double log_likelihood = - NUM_TOPICS * lgamma(ALPHA) - lgamma(gamma_sum);
 	const Doc& doc = corpus[d];
 	for (int k = 0; k < NUM_TOPICS; ++k) {
 		const double DIG = digamma_gamma[k] - digamma_gamma_sum;
 		const int GIDX = GAMMA_IDX(d, k);
-		likelihood += (ALPHA - 1) * DIG + lgamma(var_gamma[GIDX]) - (var_gamma[GIDX] - 1) * DIG;
+		log_likelihood += (ALPHA - 1) * DIG + lgamma(var_gamma[GIDX]) - (var_gamma[GIDX] - 1) * DIG;
 		for (int n = 0; n < static_cast<int>(doc.size()); ++n) {
 			const int PIDX = PHI_IDX(d, n, k);
-			likelihood += phi[PIDX] * (DIG - log(phi[PIDX]) + (doc[n].count * log_beta[BETA_IDX(k, n)]));
+			log_likelihood += phi[PIDX] * (DIG - log(phi[PIDX]) + (doc[n].count * log_beta[BETA_IDX(k, n)]));
 		}
 	}
-	return likelihood;
+	return log_likelihood;
 }
 
 double LogSum(double log_a, double log_b)
@@ -174,13 +172,43 @@ double LogSum(double log_a, double log_b)
 	return res;
 }
 
+void CalcAccuracy()
+{
+	std::vector<std::vector<int>> cluster_count(NUM_TOPICS, std::vector<int>(NUM_TOPICS, 0));
+
+	// Count clusters.
+	const int NUM_DOCS_IN_TOPIC = NUM_DOCS / NUM_TOPICS;
+	for (int k = 0; k < NUM_TOPICS; ++k)
+		for (int d = 0; d < NUM_DOCS_IN_TOPIC; ++d)
+			++cluster_count[k][GetDocTopic(k * NUM_DOCS_IN_TOPIC + d, var_gamma)];
+
+	std::vector<int> perm(NUM_TOPICS);
+	for (int i = 0; i < NUM_TOPICS; ++i)
+		perm[i] = i;
+
+	// Calculate accuracies and find maximum one for report.
+	std::vector<double> accs;
+	do {
+		double sm = 0.0;
+		for (int k = 0; k < NUM_TOPICS; ++k)
+			sm += cluster_count[k][perm[k]];
+		const double ACC = sm / static_cast<double>(NUM_DOCS);
+		accs.push_back(ACC);
+	} while (std::next_permutation(perm.begin(), perm.end()));
+
+	// Print resutl.
+	std::cout << " Accuracy: " << *std::max_element(accs.begin(), accs.end()) << "   [ ";
+	for (const auto& a : accs)
+		std::cout << a << ' ';
+	std::cout << ']' << std::endl;
+}
+
 
 
 int main(int argc, char** argv)
 {
-	const char* input_file = nullptr;
-
 	// Parse command line arguments.
+	const char* input_file = nullptr;
 	if (argc > 2) {
 		input_file = argv[1];
 		NUM_TOPICS = atoi(argv[2]);
@@ -196,19 +224,14 @@ int main(int argc, char** argv)
 		return 1;
 	}
 
-	// Update some parameters.
-	NUM_DOCS = static_cast<int>(corpus.size());
-	NUM_VOCABS = static_cast<int>(corpus[0].size());
-	NUM_WORDS_IN_DOC = GetNumWords(corpus[0]);
-
 	// Print some statistics.
-	std::cout << "Num topics        : " << NUM_TOPICS << std::endl;
-	std::cout << "Num vocabularies  : " << NUM_VOCABS << std::endl;
-	std::cout << "Corpus size       : " << corpus.size() << std::endl;
-	std::cout << "Num words per doc : " << NUM_WORDS_IN_DOC << std::endl;
+	std::cout << "Num topics          : " << NUM_TOPICS << std::endl;
+	std::cout << "Num vocabularies    : " << NUM_VOCABS << std::endl;
+	std::cout << "Corpus size         : " << corpus.size() << std::endl;
+	std::cout << "Max num words in doc: " << MAX_WORD_IN_DOC << std::endl;
 
 	// Initialize parameters.
-	var_gamma.resize(NUM_DOCS * NUM_TOPICS, ALPHA + (static_cast<double>(NUM_WORDS_IN_DOC) / NUM_TOPICS));
+	var_gamma.resize(NUM_DOCS * NUM_TOPICS, ALPHA + (static_cast<double>(MAX_WORD_IN_DOC) / NUM_TOPICS));
 	phi.resize(NUM_DOCS * NUM_VOCABS * NUM_TOPICS, 1.0 / NUM_TOPICS);
 	log_beta.resize(NUM_TOPICS * NUM_VOCABS, 0);
 	tmp_beta.resize(NUM_TOPICS * NUM_VOCABS, 1.0 / NUM_TOPICS);
@@ -228,7 +251,7 @@ int main(int argc, char** argv)
 		}
 	}
 
-	double old_likelihood = -std::numeric_limits<double>::min();
+	double old_likelihood = -std::numeric_limits<double>::max();
 	for (int itr = 0; itr < MAX_ITERATIONS; ++itr) {
 		std::cout << "---------- itr #" << (itr + 1) << " ----------" << std::endl;
 
@@ -237,37 +260,41 @@ int main(int argc, char** argv)
 		memset(&tmp_beta[0], 0, sizeof(double) * tmp_beta.size());
 		memset(&sum_beta[0], 0, sizeof(double) * sum_beta.size());
 
+		// Iterate over documents and update variational parameters.
 		for (int d = 0; d < NUM_DOCS; ++d) {
-			for (int n = 0; n < NUM_VOCABS; ++n) {
+			const Doc& doc = corpus[d];
+			for (int n = 0; n < static_cast<int>(doc.size()); ++n) {
+				const int w_n = doc[n].term - MIN_TERM;						// Transform term number to 0-based index.
+
 				// Update phi.
 				double phi_sum = 0;
 				for (int k = 0; k < NUM_TOPICS; ++k) {
-					const int PIDX = PHI_IDX(d, n, k);
-					phi[PIDX] = log_beta[BETA_IDX(k, n)] + digamma(var_gamma[GAMMA_IDX(d, k)]);
+					const int PIDX = PHI_IDX(d, w_n, k);
+					phi[PIDX] = log_beta[BETA_IDX(k, w_n)] + digamma(var_gamma[GAMMA_IDX(d, k)]);
 					phi_sum = k ? LogSum(phi_sum, phi[PIDX]) : phi[PIDX];
 				}
 
 				// Update gamma.
 				for (int k = 0; k < NUM_TOPICS; ++k) {
-					const int PIDX = PHI_IDX(d, n, k);
+					const int PIDX = PHI_IDX(d, w_n, k);
 					phi[PIDX] = exp(phi[PIDX] - phi_sum);					// Normalize phi.
-					const double PHI = corpus[d][n].count * phi[PIDX];
+					const double PHI = doc[n].count * phi[PIDX];
 
 					if (n == 0)
 						var_gamma[GAMMA_IDX(d, k)] = ALPHA;
 					var_gamma[GAMMA_IDX(d, k)] += PHI;
 
-					tmp_beta[BETA_IDX(k, n)] += PHI;
+					tmp_beta[BETA_IDX(k, w_n)] += PHI;
 					sum_beta[k] += PHI;
 				}
 			}
 
 			// Calculate document log likelihood.
-			const double DOC_LIKELIHOOD = CalcDocLikelihood(d, corpus);
+			const double DOC_LIKELIHOOD = CalcDocLogLikelihood(d, corpus);
 			corpus_likelihood += DOC_LIKELIHOOD;
 		}
 
-		// Update beta.
+		// Update model parameter beta.
 		for (int k = 0; k < NUM_TOPICS; ++k) {
 			const double LOG_SUM_BETA = log(sum_beta[k]);
 			for (int n = 0; n < NUM_VOCABS; ++n) {
@@ -281,15 +308,18 @@ int main(int argc, char** argv)
 		const double diff_likelihood = corpus_likelihood - old_likelihood;
 		if (diff_likelihood < EPSILON && itr > MIN_ITERATIONS) {
 			std::cout << "********** Converged! **********" << std::endl;
+			std::cout << "diff likelihood: " << diff_likelihood << std::endl;
+			std::cout << "********************************" << std::endl;
 			break;
 		}
 
 		old_likelihood = corpus_likelihood;
 	}
 
-	// Print topics proportions and word probability estimation for each topic.
-	PrintGamma(var_gamma);
-	PrintBeta(log_beta);
+	// Write topics proportions and word probability estimation for each topic.
+	DumpGamma(var_gamma);
+	DumpBeta(log_beta);
+	CalcAccuracy();
 	return 0;
 }
 

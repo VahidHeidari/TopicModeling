@@ -1,12 +1,18 @@
 # Directories
 .vs
+Datasets/economy
+Datasets/world
 Debug
 Release
 bin
 ipch
 
 # Files
+Datasets/farsnews_corpus.txt
+Datasets/vocabularies.txt
 Thumbs.db
+beta.txt
+var_gamma.txt
 
 # Extensions
 *.log
