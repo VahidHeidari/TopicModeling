@@ -1,0 +1,1 @@
+These sample pages can be used for checking style and verion changes.

@@ -111,7 +111,7 @@ def GetNewsPages(base_dir, news_list):
         words = news_text.split()
 
         # Read stop words.
-        stop_words_path = os.path.join('Datasets', 'stop_words.txt')
+        stop_words_path = os.path.join('Datasets', 'persian_stop_words.txt')
         STOP_WORDS = [l.strip() for l in codecs.open(stop_words_path, 'r', encoding='utf-8')]
 
         # Count words.

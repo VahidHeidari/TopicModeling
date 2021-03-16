@@ -1,4 +1,4 @@
-file bin/lda.exe
+file bin/inf.exe
 
 
 define pCorpus
@@ -62,6 +62,10 @@ define pGamma
 	pMatrix var_gamma NUM_DOCS NUM_TOPICS
 end
 
+define pTGamma
+	pMatrix var_gamma TEST_NUM_DOCS NUM_TOPICS
+end
+
 
 define pPhi
 	set $d = 0
@@ -83,8 +87,31 @@ define pPhi
 end
 
 
-break LDA.cpp:97
-break LDA.cpp:231
-run Datasets/small-corpus.txt 2
+define pTPhi
+	set $d = 0
+	while $d < TEST_NUM_DOCS
+		printf "--- doc[%d] ----\n", $d
+		set $n = 0
+		while $n < NUM_VOCABS
+			set $k = 0
+			while $k < NUM_TOPICS
+				set $idx = ($d * NUM_VOCABS * NUM_TOPICS) + ($n * NUM_TOPICS) + $k
+				printf " %2.2f ", phi._M_impl._M_start[$idx]
+				set $k = $k + 1
+			end
+			printf "\n"
+			set $n = $n + 1
+		end
+		set $d = $d + 1
+	end
+end
+
+
+#break LDA.cpp:97
+#break LDA.cpp:231
+break inference.cpp:404
+break inference.cpp:418 if d == 102
+#break inference.cpp:429
+run Datasets/farsnews_corpus.txt Datasets/test_corpu.txt 2
 layout src
 

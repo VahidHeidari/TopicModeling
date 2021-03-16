@@ -1,5 +1,6 @@
 # Directories
 .vs
+Backups
 Datasets/economy
 Datasets/world
 Debug
@@ -9,16 +10,24 @@ ipch
 
 # Files
 Datasets/farsnews_corpus.txt
+Datasets/test.txt
+Datasets/train.txt
 Datasets/vocabularies.txt
+Pw_q.txt
+Pw_z.txt
+Pz_d.txt
+Pz_q.txt
 Thumbs.db
 beta.txt
 var_gamma.txt
 
 # Extensions
+*.core
 *.log
 *.opensdf
 *.pyc
 *.sdf
+*.stackdump
 *.suo
 *.swo
 *.swp
