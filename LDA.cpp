@@ -93,15 +93,15 @@ bool ReadCorpus(const char* corpus_path, Corpus& corpus)
 void DumpBeta(const std::vector<double>& b)
 {
 	std::ofstream out_file("beta.txt");
-	out_file.precision(2);
+	out_file.precision(7);
 	out_file << std::fixed;
 	for (int k = 0; k < NUM_TOPICS; ++k) {
 		out_file << k << " ->   " << exp(b[BETA_IDX(k, 0)]);
 		for (int n = 1; n < NUM_VOCABS; ++n)
 			out_file << ' ' << exp(b[BETA_IDX(k, n)]);
-		out_file << std::endl;
+		if (k + 1 < NUM_TOPICS)
+			out_file << std::endl;
 	}
-	out_file << std::endl;
 }
 
 int GetDocTopic(int d, const std::vector<double>& g)
@@ -124,9 +124,9 @@ void DumpGamma(const std::vector<double>& g)
 		out_file << std::setw(3) << d << " ->  " << doc_topic << "  " << g[GAMMA_IDX(d, 0)];
 		for (int k = 1; k < NUM_TOPICS; ++k)
 			out_file << "   " << g[GAMMA_IDX(d, k)];
-		out_file << std::endl;
+		if (d + 1 < NUM_DOCS)
+			out_file << std::endl;
 	}
-	out_file << std::endl;
 }
 
 double digamma(double x)
@@ -156,8 +156,9 @@ double CalcDocLogLikelihood(int d, const Corpus& corpus)
 		const int GIDX = GAMMA_IDX(d, k);
 		log_likelihood += (ALPHA - 1) * DIG + lgamma(var_gamma[GIDX]) - (var_gamma[GIDX] - 1) * DIG;
 		for (int n = 0; n < static_cast<int>(doc.size()); ++n) {
-			const int PIDX = PHI_IDX(d, n, k);
-			log_likelihood += phi[PIDX] * (DIG - log(phi[PIDX]) + (doc[n].count * log_beta[BETA_IDX(k, n)]));
+			const int w_n = doc[n].term - MIN_TERM;
+			const int PIDX = PHI_IDX(d, w_n, k);
+			log_likelihood += phi[PIDX] * (DIG - log(phi[PIDX]) + (doc[n].count * log_beta[BETA_IDX(k, w_n)]));
 		}
 	}
 	return log_likelihood;
@@ -174,6 +175,9 @@ double LogSum(double log_a, double log_b)
 
 void CalcAccuracy()
 {
+	if (NUM_TOPICS > 5)
+		return;
+
 	std::vector<std::vector<int>> cluster_count(NUM_TOPICS, std::vector<int>(NUM_TOPICS, 0));
 
 	// Count clusters.
@@ -207,17 +211,18 @@ void CalcAccuracy()
 
 int main(int argc, char** argv)
 {
-	// Parse command line arguments.
-	const char* input_file = nullptr;
-	if (argc > 2) {
-		input_file = argv[1];
-		NUM_TOPICS = atoi(argv[2]);
-	} else {
+	// Check number of command line arguments.
+	if (argc <= 2) {
 		// Print usage.
 		std::cout << "Usage:   " << argv[0] << " CORPUS_PATH   K" << std::endl;
 		return 1;
 	}
 
+	// Parse command line arguments.
+	const char* input_file = argv[1];
+	NUM_TOPICS = atoi(argv[2]);
+
+	// Read corpus.
 	Corpus corpus;
 	if (!ReadCorpus(input_file, corpus)) {
 		std::cout << "Could not read `" << input_file << "' file!" << std::endl;
@@ -300,12 +305,14 @@ int main(int argc, char** argv)
 			for (int n = 0; n < NUM_VOCABS; ++n) {
 				const int BIDX = BETA_IDX(k, n);
 				log_beta[BIDX] = log(tmp_beta[BIDX]) - LOG_SUM_BETA;
+				log_beta[BIDX] = (std::isinf(-log_beta[BIDX]) || log_beta[BIDX] != log_beta[BIDX]) ? -100 : log_beta[BIDX];
 			}
 		}
 
 		// Check convergence.
 		std::cout << "Corpus likelihood: " << corpus_likelihood << std::endl;
 		const double diff_likelihood = corpus_likelihood - old_likelihood;
+		std::cout << "diff likelihood:   " << diff_likelihood << std::endl;
 		if (diff_likelihood < EPSILON && itr > MIN_ITERATIONS) {
 			std::cout << "********** Converged! **********" << std::endl;
 			std::cout << "diff likelihood: " << diff_likelihood << std::endl;

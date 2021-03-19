@@ -16,10 +16,10 @@
 
 
 // Constants
-constexpr int MAX_TRAINING_ITERATIONS = 50;
+constexpr int MAX_TRAINING_ITERATIONS = 100;
 constexpr int MAX_TEST_ITERATIONS = 25;
-constexpr int MIN_ITERATIONS = 2;
-constexpr double EPSILON = 1000.0;
+constexpr int MIN_ITERATIONS = 10;
+constexpr double EPSILON = 5.0;
 
 /// Parameters
 int NUM_TOPICS = 0;					/// K
@@ -82,18 +82,22 @@ bool ReadCorpus(const char* corpus_path, Corpus& corpus, std::vector<int>& doc_c
 	return true;
 }
 
-double CalcLogLikelihood(const Corpus& corpus, const std::vector<double>& Pw_z,
-		const std::vector<double>& Pz_d)
+double CalcLogLikelihood(const Corpus& corpus, const std::vector<int>& doc_count,
+		const std::vector<double>& Pw_z, const std::vector<double>& Pz_d)
 {
+	double sum_n_d = std::accumulate(doc_count.begin(), doc_count.end(), 0);
 	double likelihood = 0.0;
 	for (int i = 0; i < static_cast<int>(corpus.size()); ++i) {
 		const Doc& doc = corpus[i];
 		for (int j = 0; j < static_cast<int>(doc.size()); ++j) {
-			double sm = 0.0;
+			const int w_j = doc[j].term - MIN_TERM;
+			double sum_Pw_z_Pz_d = 0.0;
 			for (int k = 0; k < NUM_TOPICS; ++k)
-				sm = log(Pw_z[PW_Z_IDX(j, k)] * Pz_d[PZ_D_IDX(k, i)]);
-			likelihood += doc[j].count * sm;
+				sum_Pw_z_Pz_d += Pw_z[PW_Z_IDX(w_j, k)] * Pz_d[PZ_D_IDX(k, i)];
+			likelihood += doc[j].count * log(sum_Pw_z_Pz_d);
 		}
+		double Pd = log(doc_count[i]) - log(sum_n_d);
+		likelihood += doc_count[i] * Pd;
 	}
 	return likelihood;
 }
@@ -170,14 +174,15 @@ double RunEM(int max_iterations, const Corpus& corpus, const std::vector<int>& d
 		}
 
 		// Calculate log likelihood.
-		log_likelihood = CalcLogLikelihood(corpus, Pw_z, Pz_d);
-		std::cout << " Log likelihood      : " << log_likelihood << std::endl;
+		log_likelihood = CalcLogLikelihood(corpus, doc_count, Pw_z, Pz_d);
+		std::cout << " Log likelihood:  " << static_cast<int>(log_likelihood) << std::endl;
+		std::cout << " old likelihood:  " << static_cast<int>(old_likelihood) << std::endl;
 
 		// Check convergence.
-		double diff_likelihood = std::abs(log_likelihood - old_likelihood);
-		std::cout << " diff likelihood     : " << diff_likelihood << std::endl;
+		double diff_likelihood = log_likelihood - old_likelihood;
+		std::cout << " diff likelihood: " << diff_likelihood << std::endl;
 		if (diff_likelihood < EPSILON && itr >= MIN_ITERATIONS) {
-			std::cout << " Converged!" << std::endl;
+			std::cout << "********** Converged! **********" << std::endl;
 			break;
 		}
 
@@ -231,6 +236,9 @@ void DumpPz_d(const std::vector<double>& Pz_d, const char* out_path = "Pz_d.txt"
 
 void CalcAccuracy(const std::vector<double>& Pz_d)
 {
+	if (NUM_TOPICS > 5)
+		return;
+
 	std::vector<std::vector<int>> cluster_count(NUM_TOPICS, std::vector<int>(NUM_TOPICS, 0));
 
 	// Count clusters.
@@ -265,18 +273,17 @@ void CalcAccuracy(const std::vector<double>& Pz_d)
 
 int main(int argc, char** argv)
 {
-	// Parse command line arguments.
-	const char* input_file = nullptr;
-	const char* test_file = nullptr;
-	if (argc > 3) {
-		input_file = argv[1];
-		test_file = argv[2];
-		NUM_TOPICS = atoi(argv[3]);
-	} else {
+	// Check number of command line arguments.
+	if (argc <= 3) {
 		// Print usage.
 		std::cout << "Usage:   " << argv[0] << " CORPUS_PATH  TEST_PATH  K" << std::endl;
 		return 1;
 	}
+
+	// Parse command line arguments.
+	const char* input_file = argv[1];
+	const char* test_file = argv[2];
+	NUM_TOPICS = atoi(argv[3]);
 
 	Corpus corpus;															// Training dataset
 	std::vector<int> doc_count;												// n(d_i) Number of words in each document
@@ -352,10 +359,12 @@ int main(int argc, char** argv)
 	DumpPz_d(Pz_d);
 	CalcAccuracy(Pz_d);
 
+	std::cout << std::endl << std::endl;
 	std::cout << "===== R U N   T E S T   E M =====" << std::endl;
-	RunEM(MAX_TEST_ITERATIONS, test_corpus, test_count, Pw_z, Pz_q);		// Run EM with folding in test data.
+	double log_likelihood = RunEM(MAX_TEST_ITERATIONS, test_corpus, test_count, Pw_z, Pz_q);		// Run EM with folding in test data.
 	DumpPw_z(Pw_z, "Pw_q.txt");												// Write results and calculate accuracy for test set.
 	DumpPz_d(Pz_q, "Pz_q.txt");
+	std::cout << "log likelihood: " << static_cast<int>(log_likelihood) << std::endl;
 	CalcAccuracy(Pz_q);
 	return 0;
 }

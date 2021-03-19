@@ -1,3 +1,4 @@
+#file bin/lda.exe
 file bin/inf.exe
 
 
@@ -109,9 +110,16 @@ end
 
 #break LDA.cpp:97
 #break LDA.cpp:231
-break inference.cpp:404
-break inference.cpp:418 if d == 102
+#break inference.cpp:404
+#break inference.cpp:418 if d == 102
 #break inference.cpp:429
-run Datasets/farsnews_corpus.txt Datasets/test_corpu.txt 2
+#run Datasets/farsnews_corpus.txt Datasets/test_corpu.txt 2
+
+#break CalcDocLogLikelihood
+#run Datasets/small-corpus.txt 2
+
+break main
+break inference.cpp:465
+run Datasets/train.txt Datasets/test.txt 1
 layout src
 
