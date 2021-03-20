@@ -1,6 +1,7 @@
 # Directories
 .vs
 Backups
+Datasets/MovieLens
 Datasets/economy
 Datasets/world
 Debug
@@ -9,6 +10,9 @@ bin
 ipch
 
 # Files
+Datasets/1m-indices.txt
+Datasets/1m-test.txt
+Datasets/1m-train.txt
 Datasets/farsnews_corpus.txt
 Datasets/test.txt
 Datasets/train.txt
