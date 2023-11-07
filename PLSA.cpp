@@ -13,6 +13,8 @@
 #define PW_Z_IDX(W, K)			((K * NUM_VOCABS) + W)
 #define PZ_D_IDX(Z, D)			((D * NUM_TOPICS) + Z)
 
+#define IS_INF_OR_NAN(F)	(std::isinf(F) || std::isinf(-F) || (F != F))
+
 
 
 // Constants
@@ -113,7 +115,7 @@ double RunEM(int max_iterations, const Corpus& corpus, const std::vector<int>& d
 	std::vector<double> tmp_Pz_d(NUM_TOPICS * corpus.size());
 
 	for (int itr = 0; itr < max_iterations; ++itr) {
-		std::cout << " ---------- itr #" << (itr + 1) << " ----------" << std::endl;
+		std::cout << " ---------- itr #" << (itr + 1) << " (of " << max_iterations << ") ----------" << std::endl;
 
 		// E-step
 		for (int i = 0; i < static_cast<int>(corpus.size()); ++ i) {		// Documents
@@ -262,7 +264,7 @@ void CalcAccuracy(const std::vector<double>& Pz_d)
 		accs.push_back(ACC);
 	} while (std::next_permutation(perm.begin(), perm.end()));
 
-	// Print resutl.
+	// Print resul.
 	std::cout << " Accuracy: " << *std::max_element(accs.begin(), accs.end()) << "   [ ";
 	for (const auto& a : accs)
 		std::cout << a << ' ';
@@ -364,6 +366,7 @@ int main(int argc, char** argv)
 	double log_likelihood = RunEM(MAX_TEST_ITERATIONS, test_corpus, test_count, Pw_z, Pz_q);		// Run EM with folding in test data.
 	DumpPw_z(Pw_z, "Pw_q.txt");												// Write results and calculate accuracy for test set.
 	DumpPz_d(Pz_q, "Pz_q.txt");
+	std::cout << "K: " << NUM_TOPICS << std::endl;
 	std::cout << "log likelihood: " << static_cast<int>(log_likelihood) << std::endl;
 	CalcAccuracy(Pz_q);
 	return 0;

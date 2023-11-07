@@ -14,6 +14,8 @@
 #define GAMMA_IDX(D, K)  ((D * NUM_TOPICS) + K)
 #define BETA_IDX(K, N)   ((K * NUM_VOCABS) + N)
 
+#define IS_INF_OR_NAN(F)	(std::isinf(F) || std::isinf(-F) || (F != F))
+
 
 
 // Constants
@@ -158,7 +160,9 @@ double CalcDocLogLikelihood(int d, const Corpus& corpus)
 		for (int n = 0; n < static_cast<int>(doc.size()); ++n) {
 			const int w_n = doc[n].term - MIN_TERM;
 			const int PIDX = PHI_IDX(d, w_n, k);
-			log_likelihood += phi[PIDX] * (DIG - log(phi[PIDX]) + (doc[n].count * log_beta[BETA_IDX(k, w_n)]));
+			const int BIDX = BETA_IDX(k, w_n);
+			const double LOG_BETA = IS_INF_OR_NAN(log_beta[BIDX]) ? -100 : log_beta[BIDX];
+			log_likelihood += phi[PIDX] * (DIG - log(phi[PIDX]) + (doc[n].count * LOG_BETA));
 		}
 	}
 	return log_likelihood;
@@ -200,7 +204,7 @@ void CalcAccuracy()
 		accs.push_back(ACC);
 	} while (std::next_permutation(perm.begin(), perm.end()));
 
-	// Print resutl.
+	// Print result.
 	std::cout << " Accuracy: " << *std::max_element(accs.begin(), accs.end()) << "   [ ";
 	for (const auto& a : accs)
 		std::cout << a << ' ';
@@ -305,7 +309,7 @@ int main(int argc, char** argv)
 			for (int n = 0; n < NUM_VOCABS; ++n) {
 				const int BIDX = BETA_IDX(k, n);
 				log_beta[BIDX] = log(tmp_beta[BIDX]) - LOG_SUM_BETA;
-				log_beta[BIDX] = (std::isinf(-log_beta[BIDX]) || log_beta[BIDX] != log_beta[BIDX]) ? -100 : log_beta[BIDX];
+				log_beta[BIDX] = IS_INF_OR_NAN(log_beta[BIDX]) ? -100 : log_beta[BIDX];
 			}
 		}
 
@@ -323,7 +327,7 @@ int main(int argc, char** argv)
 		old_likelihood = corpus_likelihood;
 	}
 
-	// Write topics proportions and word probability estimation for each topic.
+	// Write topic proportions and word probability estimates for each topic.
 	DumpGamma(var_gamma);
 	DumpBeta(log_beta);
 	CalcAccuracy();
